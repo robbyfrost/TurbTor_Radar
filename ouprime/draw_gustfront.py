@@ -12,6 +12,7 @@ from matplotlib.ticker import MultipleLocator
 sys.path.append('/Users/robbyfrost/Documents/MS_Project/TurbTor_Radar/')
 from functions import *
 import os
+from scipy.interpolate import interp1d
 
 # plotting set up
 plt.rcParams['axes.labelweight'] = 'normal'
@@ -123,7 +124,35 @@ klicker = clicker(
 plt.show()
 coords = klicker.get_positions()
 
-# plot gust fronts using coords
-fig, ax = plot_vr(0, 1)
-ax.plot(coords['RFGF'][:,0], coords['RFGF'][:,1], c='blue')
-plt.show()
+# --------------------------------------------------
+# Create gust front line and make relative ranges
+# --------------------------------------------------
+# Extract coordinates
+xRFGF, yRFGF = coords["RFGF"][:,0], coords["RFGF"][:,1]
+# Sort points by xRFGF
+sorted_indices = np.argsort(xRFGF)
+xRFGF_sorted = xRFGF[sorted_indices]
+yRFGF_sorted = yRFGF[sorted_indices]
+# Create interpolation function
+interp_fn = interp1d(xRFGF_sorted, yRFGF_sorted, kind='linear')
+# Create a dense array of x values for the line
+x_dense = np.linspace(xRFGF_sorted[0], xRFGF_sorted[-1], num=100)
+y_dense = interp_fn(x_dense)
+
+# radar fields, cartesian grid
+r = radar.range['data']
+az = radar.get_azimuth(0)
+nr, naz = r.size, az.size
+print(naz)
+XX, YY = dis_angle_to_2Dxy(r, north0_to_arctheta(az))
+XX, YY = XX.T/1e3, YY.T/1e3
+
+# match line to radar gates
+XXf, YYf = XX.ravel(), YY.ravel()  # Flatten XX into a 1D array
+xidx = np.abs(XXf[:,None] - x_dense[None,:]).argmin(axis=0)  # Find closest indices
+xidx = np.unravel_index(xidx, XX.shape)
+yidx = np.abs(YYf[:,None] - y_dense[None,:]).argmin(axis=0)  # Find closest indices
+yidx = np.unravel_index(yidx, YY.shape)
+
+# Array of ranges relative to RFGF
+ranges = np.tile(r, (naz, 1))
